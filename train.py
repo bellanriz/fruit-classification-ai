@@ -2,6 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
+from PIL import Image, ImageEnhance
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
@@ -17,10 +18,82 @@ RESULTS_DIR = "results"
 IMG_SIZE = (100, 100)
 BATCH_SIZE = 32
 EPOCHS = 20
-NUM_CLASSES = 5
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
 os.makedirs("models", exist_ok=True)
 os.makedirs(RESULTS_DIR, exist_ok=True)
+
+
+def boost_target_classes(
+    train_dir: str,
+    target_classes: tuple[str, ...] = ("mango", "grape", "rambutan"),
+    variants_per_image: int = 2,
+) -> None:
+    """Create extra enhanced images for difficult classes to improve recall."""
+    for class_name in target_classes:
+        class_dir = os.path.join(train_dir, class_name)
+        if not os.path.isdir(class_dir):
+            print(f"[boost] Skipped missing class folder: {class_dir}")
+            continue
+
+        all_files = [
+            name
+            for name in os.listdir(class_dir)
+            if os.path.splitext(name)[1].lower() in IMAGE_EXTENSIONS
+        ]
+
+        source_files = [name for name in all_files if not name.startswith("boost_")]
+        created_count = 0
+
+        for file_name in source_files:
+            file_path = os.path.join(class_dir, file_name)
+            try:
+                base = Image.open(file_path).convert("RGB")
+            except Exception:
+                continue
+
+            stem = os.path.splitext(file_name)[0]
+            variants = [
+                ImageEnhance.Color(base).enhance(1.15),
+                ImageEnhance.Contrast(base).enhance(1.18),
+                base.rotate(-8, resample=Image.Resampling.BILINEAR, fillcolor=(255, 255, 255)),
+                base.rotate(8, resample=Image.Resampling.BILINEAR, fillcolor=(255, 255, 255)),
+            ]
+
+            for idx, variant in enumerate(variants[:variants_per_image], start=1):
+                out_name = f"boost_{stem}_{idx}.jpg"
+                out_path = os.path.join(class_dir, out_name)
+                variant.save(out_path, format="JPEG", quality=95)
+                created_count += 1
+
+        print(f"[boost] {class_name}: created {created_count} enhanced images")
+
+
+def validate_class_folders(train_dir: str, test_dir: str) -> None:
+    train_classes = {
+        name
+        for name in os.listdir(train_dir)
+        if os.path.isdir(os.path.join(train_dir, name))
+    }
+    test_classes = {
+        name
+        for name in os.listdir(test_dir)
+        if os.path.isdir(os.path.join(test_dir, name))
+    }
+
+    missing_in_test = sorted(train_classes - test_classes)
+    missing_in_train = sorted(test_classes - train_classes)
+    if missing_in_test or missing_in_train:
+        details = []
+        if missing_in_test:
+            details.append(f"Missing in test: {', '.join(missing_in_test)}")
+        if missing_in_train:
+            details.append(f"Missing in train: {', '.join(missing_in_train)}")
+        raise ValueError("Train/test class folders must match. " + " | ".join(details))
+
+
+boost_target_classes(TRAIN_DIR)
+validate_class_folders(TRAIN_DIR, TEST_DIR)
 
 #Data augmentation
 train_datagen = ImageDataGenerator(
@@ -54,6 +127,7 @@ test_generator = test_datagen.flow_from_directory(
 class_indices = train_generator.class_indices
 print("Class indices:", class_indices)
 np.save("models/class_indices.npy", class_indices)
+num_classes = len(class_indices)
 
 # CNN MODEL
 model = Sequential([
@@ -72,7 +146,7 @@ model = Sequential([
     Flatten(),
     Dense(128, activation='relu'),
     Dropout(0.5),
-    Dense(NUM_CLASSES, activation='softmax')
+    Dense(num_classes, activation='softmax')
 ])  
 
 model.compile(
