@@ -26,10 +26,28 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 
 def boost_target_classes(
     train_dir: str,
-    target_classes: tuple[str, ...] = ("mango", "grape", "rambutan"),
+    target_classes: tuple[str, ...] | None = None,
     variants_per_image: int = 2,
 ) -> None:
     """Create extra enhanced images for difficult classes to improve recall."""
+    if target_classes is None:
+        class_counts = []
+        for name in os.listdir(train_dir):
+            class_dir = os.path.join(train_dir, name)
+            if not os.path.isdir(class_dir):
+                continue
+
+            image_count = sum(
+                1
+                for file_name in os.listdir(class_dir)
+                if os.path.splitext(file_name)[1].lower() in IMAGE_EXTENSIONS
+            )
+            class_counts.append((image_count, name))
+
+        target_classes = tuple(
+            name for _count, name in sorted(class_counts)[:2]
+        )
+
     for class_name in target_classes:
         class_dir = os.path.join(train_dir, class_name)
         if not os.path.isdir(class_dir):
