@@ -256,6 +256,19 @@ class FruitClassifierGUI:
         )
         self.predict_button.pack(side=tk.LEFT, padx=(10, 0))
 
+        self.reset_button = tk.Button(
+            button_row,
+            text="Reset",
+            font=("Segoe UI", 10, "bold"),
+            width=12,
+            relief=tk.FLAT,
+            bd=0,
+            cursor="hand2",
+            command=self.reset_selection,
+            state=tk.DISABLED,
+        )
+        self.reset_button.pack(side=tk.LEFT, padx=(10, 0))
+
         self.path_label = tk.Label(
             self.preview_card,
             text="Image path: -",
@@ -318,13 +331,25 @@ class FruitClassifierGUI:
             chip.pack(side=tk.LEFT, padx=(0, 8))
             self.top3_labels.append(chip)
 
+        status_row = tk.Frame(self.result_card, bg=self.theme["surface"])
+        status_row.pack(anchor="w", padx=16, pady=(0, 10))
+
+        self.status_indicator = tk.Canvas(
+            status_row,
+            width=14,
+            height=14,
+            highlightthickness=0,
+            bg=self.theme["surface"],
+        )
+        self.status_indicator.pack(side=tk.LEFT, pady=2)
+
         self.status_label = tk.Label(
-            self.result_card,
+            status_row,
             text="Status: Waiting for image upload",
             font=("Segoe UI", 10),
-            pady=10,
+            bg=self.theme["surface"],
         )
-        self.status_label.pack(anchor="w", padx=16)
+        self.status_label.pack(side=tk.LEFT, padx=(8, 0))
 
     def _build_scores_card(self, parent: tk.Frame) -> None:
         self.scores_card = tk.Frame(parent, highlightthickness=1)
@@ -387,6 +412,21 @@ class FruitClassifierGUI:
             font=("Segoe UI", 12, "bold"),
         )
         self.history_title.pack(anchor="w", padx=16, pady=(12, 6))
+
+        control_row = tk.Frame(self.history_card, bg=self.theme["surface"])
+        control_row.pack(fill=tk.X, padx=16, pady=(0, 8))
+
+        self.clear_history_button = tk.Button(
+            control_row,
+            text="Clear history",
+            font=("Segoe UI", 9, "bold"),
+            width=14,
+            relief=tk.FLAT,
+            bd=0,
+            cursor="hand2",
+            command=self.clear_history,
+        )
+        self.clear_history_button.pack(side=tk.RIGHT)
 
         self.history_list = tk.Listbox(
             self.history_card,
@@ -464,12 +504,25 @@ class FruitClassifierGUI:
             activebackground=self.theme["button_secondary_dark"],
             activeforeground="#ffffff",
         )
+        self.reset_button.config(
+            bg=self.theme["button_secondary"],
+            fg="#ffffff",
+            activebackground=self.theme["button_secondary_dark"],
+            activeforeground="#ffffff",
+        )
+        self.clear_history_button.config(
+            bg=self.theme["button_secondary"],
+            fg="#ffffff",
+            activebackground=self.theme["button_secondary_dark"],
+            activeforeground="#ffffff",
+        )
 
         self.result_label.config(bg=self.theme["surface"], fg=self.theme["text"])
         self.confidence_label.config(bg=self.theme["surface"], fg=self.theme["muted"])
         self.top3_title.config(bg=self.theme["surface"], fg=self.theme["text"])
         self.top3_frame.config(bg=self.theme["surface"])
         self.status_label.config(bg=self.theme["surface"])
+        self.status_indicator.config(bg=self.theme["surface"])
 
         self.scores_title.config(bg=self.theme["surface"], fg=self.theme["text"])
         self.helper_text.config(bg=self.theme["surface"], fg=self.theme["muted"])
@@ -494,6 +547,8 @@ class FruitClassifierGUI:
         self.status_label.config(fg=self.current_status_color)
         self._bind_hover(self.upload_button, "accent")
         self._bind_hover(self.predict_button, "button_secondary")
+        self._bind_hover(self.reset_button, "button_secondary")
+        self._bind_hover(self.clear_history_button, "button_secondary")
 
     def _on_theme_change(self, selected_theme: str) -> None:
         if selected_theme not in THEMES:
@@ -699,6 +754,37 @@ class FruitClassifierGUI:
             fill="#ffffff" if percent > 28 else self.theme["text"],
             font=("Segoe UI", 9, "bold"),
         )
+
+    def _update_status(self, message: str, color: str | None = None) -> None:
+        self.current_status_color = color or self.theme["muted"]
+        self.status_label.config(text=message, fg=self.current_status_color)
+        self.status_indicator.delete("all")
+        self.status_indicator.create_oval(
+            0,
+            0,
+            14,
+            14,
+            fill=self.current_status_color,
+            outline=self.current_status_color,
+        )
+
+    def reset_selection(self) -> None:
+        self.selected_image_path = None
+        self.image_label.config(image="", text="No image selected", bg=self.theme["preview_bg"])
+        self.predict_button.config(state=tk.DISABLED)
+        self.reset_button.config(state=tk.DISABLED)
+        self.path_label.config(text="Image path: -")
+        self._update_status("Status: Waiting for image upload", self.theme["muted"])
+        self.current_confidence = 0.0
+        self.current_meter_color = self.theme["accent"]
+        self._set_confidence_meter(0.0)
+        self._reset_scores()
+        self._update_top3([])
+
+    def clear_history(self) -> None:
+        self.history_entries = []
+        self.history_list.delete(0, tk.END)
+        self.history_list.insert(tk.END, "No predictions yet")
 
     def _animate_scores(self, probabilities: np.ndarray, predicted_class: str) -> None:
         for idx, class_name in enumerate(self.class_names):
