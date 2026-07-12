@@ -7,7 +7,6 @@ from sklearn.metrics import classification_report, confusion_matrix
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
-
 MODEL_PATH = "models/fruit_classifier.h5"
 CLASS_INDICES_PATH = "models/class_indices.npy"
 TEST_DIR = "dataset/test"
@@ -45,7 +44,7 @@ def evaluate(batch_size: int, img_size: tuple[int, int]) -> None:
         shuffle=False,
     )
 
-    predictions = model.predict(test_generator)
+    predictions = model.predict(test_generator, verbose=1)
     y_pred = np.argmax(predictions, axis=1)
     y_true = test_generator.classes
 
@@ -55,7 +54,8 @@ def evaluate(batch_size: int, img_size: tuple[int, int]) -> None:
         target_names=class_names,
         digits=4,
     )
-    print("\nClassification Report:\n")
+
+    print("\n=== Evaluation Results ===")
     print(report)
 
     report_path = os.path.join(RESULTS_DIR, "classification_report.txt")
