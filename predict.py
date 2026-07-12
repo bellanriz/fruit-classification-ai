@@ -2,93 +2,81 @@ import argparse
 import os
 
 import numpy as np
-from PIL import Image, ImageEnhance, ImageOps
+from PIL import Image
 from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing import image
-
 
 MODEL_PATH = "models/fruit_classifier.h5"
 CLASS_INDICES_PATH = "models/class_indices.npy"
+IMG_SIZE = (100, 100)
 
 
-def load_class_names(class_indices_path: str) -> list[str]:
-    class_indices = np.load(class_indices_path, allow_pickle=True).item()
-    index_to_class = {idx: name for name, idx in class_indices.items()}
-    return [index_to_class[i] for i in range(len(index_to_class))]
+def load_class_names(path):
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Class indices file not found: {path}. Run train.py first.")
+
+    class_indices = np.load(path, allow_pickle=True).item()
+    class_names = [None] * len(class_indices)
+    for name, index in class_indices.items():
+        class_names[index] = name
+    return class_names
 
 
-def predict_with_tta(model, image_path: str, img_size: tuple[int, int]) -> np.ndarray:
-    # Average several transformed views to improve robustness on real-world photos.
-    base = Image.open(image_path).convert("RGB")
-    variants: list[Image.Image] = [
-        base,
-        ImageOps.mirror(base),
-        base.rotate(-10, resample=Image.Resampling.BILINEAR, fillcolor=(255, 255, 255)),
-        base.rotate(10, resample=Image.Resampling.BILINEAR, fillcolor=(255, 255, 255)),
-        ImageEnhance.Brightness(base).enhance(0.9),
-        ImageEnhance.Brightness(base).enhance(1.1),
-        ImageEnhance.Contrast(base).enhance(1.1),
-    ]
-
-    batch: list[np.ndarray] = []
-    for variant in variants:
-        resized = variant.resize(img_size, Image.Resampling.BILINEAR)
-        batch.append(image.img_to_array(resized) / 255.0)
-
-    stacked = np.stack(batch, axis=0)
-    predictions = model.predict(stacked, verbose=0)
-    return np.mean(predictions, axis=0)
-
-
-def predict_single_image(image_path: str, img_size: tuple[int, int]) -> None:
-    if not os.path.exists(MODEL_PATH):
-        raise FileNotFoundError(
-            f"Model not found at {MODEL_PATH}. Run train.py first."
-        )
-
-    if not os.path.exists(CLASS_INDICES_PATH):
-        raise FileNotFoundError(
-            f"Class indices not found at {CLASS_INDICES_PATH}. Run train.py first."
-        )
-
+def preprocess_image(image_path, target_size):
     if not os.path.exists(image_path):
-        raise FileNotFoundError(f"Image not found: {image_path}")
+        raise FileNotFoundError(f"Image file not found: {image_path}")
 
-    model = load_model(MODEL_PATH)
-    class_names = load_class_names(CLASS_INDICES_PATH)
+    image = Image.open(image_path).convert("RGB")
+    image = image.resize(target_size)
+    image_array = np.array(image, dtype=np.float32) / 255.0
+    return image_array
 
-    probabilities = predict_with_tta(model, image_path, img_size)
-    predicted_index = int(np.argmax(probabilities))
+
+def predict_image(model, class_names, image_path, img_size):
+    image_array = preprocess_image(image_path, img_size)
+    image_batch = np.expand_dims(image_array, axis=0)
+    predictions = model.predict(image_batch, verbose=0)
+    predicted_index = int(np.argmax(predictions[0]))
+    confidence = float(predictions[0][predicted_index])
     predicted_class = class_names[predicted_index]
-    confidence = float(probabilities[predicted_index])
-
-    print(f"Predicted class: {predicted_class}")
-    print(f"Confidence: {confidence * 100:.2f}%")
-
-    print("\nClass probabilities:")
-    for idx, class_name in enumerate(class_names):
-        print(f"- {class_name}: {probabilities[idx] * 100:.2f}%")
+    return predicted_class, confidence, predictions[0]
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Predict fruit class for a single image.")
-    parser.add_argument(
-        "--image",
-        type=str,
-        required=True,
-        help="Path to the image file.",
-    )
+def parse_args():
+    parser = argparse.ArgumentParser(description="Predict the fruit class for a single image.")
+    parser.add_argument("--image", "-i", required=True, help="Path to the input image file.")
     parser.add_argument(
         "--img-size",
         type=int,
         nargs=2,
-        default=(100, 100),
+        default=IMG_SIZE,
         metavar=("WIDTH", "HEIGHT"),
-        help="Image size expected by the model.",
+        help="Target image size for the model.",
     )
     return parser.parse_args()
 
 
-if __name__ == "__main__":
+def main():
     args = parse_args()
-    predict_single_image(image_path=args.image, img_size=tuple(args.img_size))
+
+    if not os.path.exists(MODEL_PATH):
+        raise FileNotFoundError(f"Model file not found: {MODEL_PATH}. Run train.py first.")
+
+    print(f"Loading model from {MODEL_PATH}...")
+    model = load_model(MODEL_PATH)
+    class_names = load_class_names(CLASS_INDICES_PATH)
+
+    predicted_class, confidence, prediction_vector = predict_image(
+        model, class_names, args.image, tuple(args.img_size)
+    )
+
+    print("\n=== Prediction ===")
+    print(f"Image: {args.image}")
+    print(f"Predicted class: {predicted_class}")
+    print(f"Confidence: {confidence:.4f}")
+    print("\nClass probabilities:")
+    for idx, class_name in enumerate(class_names):
+        print(f"  {class_name}: {prediction_vector[idx]:.4f}")
+
+
+if __name__ == "__main__":
+    main()
