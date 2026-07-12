@@ -1,0 +1,11 @@
+              precision    recall  f1-score   support
+
+       apple     1.0000    1.0000    1.0000       164
+      banana     1.0000    1.0000    1.0000       166
+       grape     1.0000    1.0000    1.0000       155
+       mango     1.0000    1.0000    1.0000       166
+      orange     1.0000    1.0000    1.0000       160
+
+    accuracy                         1.0000       811
+   macro avg     1.0000    1.0000    1.0000       811
+weighted avg     1.0000    1.0000    1.0000       811
