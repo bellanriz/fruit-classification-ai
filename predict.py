@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 
 import numpy as np
 from PIL import Image
@@ -35,10 +36,18 @@ def predict_image(model, class_names, image_path, img_size):
     image_array = preprocess_image(image_path, img_size)
     image_batch = np.expand_dims(image_array, axis=0)
     predictions = model.predict(image_batch, verbose=0)
-    predicted_index = int(np.argmax(predictions[0]))
-    confidence = float(predictions[0][predicted_index])
+    prediction_vector = predictions[0]
+    predicted_index = int(np.argmax(prediction_vector))
+    confidence = float(prediction_vector[predicted_index])
     predicted_class = class_names[predicted_index]
-    return predicted_class, confidence, predictions[0]
+    return predicted_class, confidence, prediction_vector
+
+
+def format_top_predictions(class_names, prediction_vector, top_k=3):
+    ranked = sorted(
+        enumerate(prediction_vector), key=lambda item: item[1], reverse=True
+    )[:top_k]
+    return [(class_names[index], float(score)) for index, score in ranked]
 
 
 def parse_args():
@@ -52,31 +61,57 @@ def parse_args():
         metavar=("WIDTH", "HEIGHT"),
         help="Target image size for the model.",
     )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=3,
+        help="Number of top predictions to show.",
+    )
     return parser.parse_args()
 
 
-def main():
+def main() -> int:
     args = parse_args()
 
     if not os.path.exists(MODEL_PATH):
-        raise FileNotFoundError(f"Model file not found: {MODEL_PATH}. Run train.py first.")
+        print(f"ERROR: Model file not found: {MODEL_PATH}. Run train.py first.", file=sys.stderr)
+        return 1
 
-    print(f"Loading model from {MODEL_PATH}...")
-    model = load_model(MODEL_PATH)
-    class_names = load_class_names(CLASS_INDICES_PATH)
+    if not os.path.exists(CLASS_INDICES_PATH):
+        print(
+            f"ERROR: Class indices file not found: {CLASS_INDICES_PATH}. Run train.py first.",
+            file=sys.stderr,
+        )
+        return 1
 
-    predicted_class, confidence, prediction_vector = predict_image(
-        model, class_names, args.image, tuple(args.img_size)
-    )
+    try:
+        print(f"Loading model from {MODEL_PATH}...")
+        model = load_model(MODEL_PATH)
+        class_names = load_class_names(CLASS_INDICES_PATH)
 
-    print("\n=== Prediction ===")
-    print(f"Image: {args.image}")
-    print(f"Predicted class: {predicted_class}")
-    print(f"Confidence: {confidence:.4f}")
-    print("\nClass probabilities:")
-    for idx, class_name in enumerate(class_names):
-        print(f"  {class_name}: {prediction_vector[idx]:.4f}")
+        predicted_class, confidence, prediction_vector = predict_image(
+            model, class_names, args.image, tuple(args.img_size)
+        )
+
+        print("\n=== Prediction ===")
+        print(f"Image: {args.image}")
+        print(f"Predicted class: {predicted_class}")
+        print(f"Confidence: {confidence:.4f}")
+
+        top_predictions = format_top_predictions(class_names, prediction_vector, args.top_k)
+        print("\nTop predictions:")
+        for rank, (class_name, score) in enumerate(top_predictions, start=1):
+            print(f"  {rank}. {class_name} ({score:.4f})")
+
+        print("\nAll class probabilities:")
+        for idx, class_name in enumerate(class_names):
+            print(f"  {class_name}: {prediction_vector[idx]:.4f}")
+
+        return 0
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

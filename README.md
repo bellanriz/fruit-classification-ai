@@ -98,18 +98,28 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-# Train the model
-python train.py
+# Install dependencies
+pip install -r requirements.txt
 
-# Evaluate the model
-python evaluate.py
+# Train the model and save the artifacts
+./env312/bin/python train.py
+
+# Evaluate the saved model using the test data
+./env312/bin/python evaluate.py
 
 # Predict a single image
-python predict.py --image path/to/fruit.jpg
+./env312/bin/python predict.py --image dataset/test/apple/3_100.jpg
 
-# Launch the GUI
-python gui.py
+# Launch the GUI application
+./env312/bin/python gui.py
 ```
+
+### Notes
+
+- `train.py` saves the trained model to `models/fruit_classifier.h5` and class mappings to `models/class_indices.npy`.
+- `evaluate.py` writes the classification report and confusion matrix to `results/`.
+- `predict.py` prints the top prediction and class probability ranking.
+- If the GUI fails to launch, make sure your Python environment includes `tkinter`.
 
 ---
 
